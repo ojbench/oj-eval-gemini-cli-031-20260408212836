@@ -4,20 +4,55 @@
 #include <iostream>
 #include <vector>
 #include <memory>
+#include <set>
 
 class pylist {
 private:
-    struct ListData {
+    struct ListData;
+
+    static std::set<ListData*>& get_all_lists() {
+        static std::set<ListData*> lists;
+        return lists;
+    }
+
+    static void register_gc() {
+        struct GarbageCollector {
+            ~GarbageCollector() {
+                auto& lists = get_all_lists();
+                while (!lists.empty()) {
+                    auto it = lists.begin();
+                    ListData* ptr = *it;
+                    lists.erase(it);
+                    auto sp = ptr->shared_from_this();
+                    sp->vec.clear();
+                }
+            }
+        };
+        static GarbageCollector gc;
+    }
+
+    struct ListData : public std::enable_shared_from_this<ListData> {
         std::vector<pylist> vec;
+        ListData() {
+            get_all_lists().insert(this);
+        }
+        ~ListData() {
+            get_all_lists().erase(this);
+        }
     };
+
     std::shared_ptr<ListData> ptr;
     int val;
     bool is_int;
 
 public:
-    pylist() : ptr(std::make_shared<ListData>()), val(0), is_int(false) {}
+    pylist() : ptr(std::make_shared<ListData>()), val(0), is_int(false) {
+        register_gc();
+    }
     
-    pylist(int v) : ptr(nullptr), val(v), is_int(true) {}
+    pylist(int v) : ptr(nullptr), val(v), is_int(true) {
+        register_gc();
+    }
     
     pylist(const pylist &other) = default;
     
